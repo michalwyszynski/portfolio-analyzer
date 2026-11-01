@@ -1,0 +1,14 @@
+[project]
+name = "portfolio-analyzer"
+requires-python = ">3.11"
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64", "osx-64", "win-64"]
+
+[tool.pixi.dependencies]
+yfinance = ">=1.7.0,<2"
+matplotlib = ">=3.11.2,<4"
+ipython = ">=9.18.0,<10"
+pandas = "3.0.3.*"
+

@@ -34,7 +34,6 @@ python example.py
 ## Roadmap and future work
 
 * **Testing:** implement a `pytest` suite to ensure there are no regressions. The existing CSV fallback functionality can be used for mocking the data source. Add the `test` task in the toml.
-* **Linting/formatting:** add the `format` task using `ruff` in the toml.
-* **CI/CD pipeline:** set up GitHub actions for checking formatting and running the test suite on every PR.
+* **CI/CD pipeline:** set up GitHub Actions for checking formatting and running the test suite on every PR.
 * **Support for stock splits:** implement the relevant logic and arithmetic, add tests.
 * **Data input:** design and implement streamlined data input (could be from a CSV file).

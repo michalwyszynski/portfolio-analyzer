@@ -1,4 +1,4 @@
-from portfolio import Portfolio, AssetClass
+from portfolio import AssetClass, Portfolio
 
 
 def generate_transaction_history(portfolio: Portfolio) -> None:
@@ -17,16 +17,16 @@ def generate_transaction_history(portfolio: Portfolio) -> None:
 
 
 if __name__ == "__main__":
-    portfolio = Portfolio(start_date="2021-01-26", ccy_conv = {"GC=F": "EUR=X"})
+    portfolio = Portfolio(start_date="2021-01-26", ccy_conv={"GC=F": "EUR=X"})
     generate_transaction_history(portfolio)
     portfolio.calculate()
-    print("="*60)
+    print("=" * 50)
     portfolio.print_best_worst_periods()
-    print("="*60)
+    print("=" * 50)
     portfolio.print_best_worst_periods(period="month")
-    print("="*60)
+    print("=" * 50)
     portfolio.print_best_worst_periods(period="year")
-    print("="*60)
+    print("=" * 50)
     portfolio.default_plot()
 
     portfolio.register_alloc_matrix(
@@ -39,6 +39,6 @@ if __name__ == "__main__":
             "V60A.DE": {AssetClass.STOCKS: 0.6, AssetClass.BONDS: 0.4},
         }
     )
-    
+
     portfolio.metrics_plot()
     portfolio.show_plots()

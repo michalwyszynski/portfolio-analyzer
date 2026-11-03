@@ -1,14 +1,15 @@
-from collections.abc import Iterable
-import yfinance as yf
-import matplotlib.pyplot as plt
-import pandas as pd
-from pandas.tseries.offsets import DateOffset
-from datetime import datetime
-from matplotlib import ticker as mtick
 import os
-import numpy as np
+from collections.abc import Iterable
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import yfinance as yf
+from matplotlib import ticker as mtick
+from pandas.tseries.offsets import DateOffset
 
 
 class AssetClass(StrEnum):
@@ -26,12 +27,12 @@ class Portfolio:
         self.end_date = pd.to_datetime("today")
 
         self.start_date = start_date
-        #self.days_to_discard = ["2026-04-01"]
+        # self.days_to_discard = ["2026-04-01"]
         self.days_to_discard = []
 
         self.ccy_conv = ccy_conv
         self.alloc_matrix: dict[str, dict[AssetClass, float]] = {}
-    
+
     def _date_conv(self, date_str: str) -> datetime:
         return datetime.strptime(date_str, "%Y-%m-%d")
 
@@ -41,39 +42,38 @@ class Portfolio:
 
     def sell(self, date: str, ticker: str, qty: int, price: float) -> None:
         self._sales.append([date, ticker, qty, price])
-    
+
     def add_dividend(self, date, ticker: str, amount: float) -> None:
         self._dividends.append([date, ticker, amount])
-    
+
     def register_alloc_matrix(self, alloc_matrix: dict[str, dict[AssetClass, float]]) -> None:
         self.alloc_matrix.update(alloc_matrix)
-    
+
     def _get_price_data(self) -> pd.DataFrame:
         tickers = self.tickers
 
-
         start, end = self.start_date, self.end_date
-        yf_df = yf.Tickers(list(self.tickers)).history(start=start, end=end)['Close']
+        yf_df = yf.Tickers(list(self.tickers)).history(start=start, end=end)["Close"]
         yf_df.index = yf_df.index.tz_localize(None)
-        
+
         for ticker in tickers:
             first_valid = yf_df[ticker].first_valid_index()
             target_start = pd.to_datetime(start)
-            
+
             # missing historical data, notorious with yf
             if first_valid is None or first_valid > target_start:
                 csv_path = f"data/{ticker}.csv"
                 if os.path.exists(csv_path):
                     print(f"Patching {ticker} data...")
-                    csv_df = pd.read_csv(csv_path, index_col="Date", parse_dates=True, dayfirst=True)['Close']
+                    csv_df = pd.read_csv(csv_path, index_col="Date", parse_dates=True, dayfirst=True)["Close"]
                     yf_df[ticker] = csv_df.combine_first(yf_df[ticker])
                 else:
                     print(f"Warning: {ticker} data missing. CSV not found at {csv_path}.")
-        
+
             # currency conversion
-            if ticker in self.ccy_conv.keys():
+            if ticker in self.ccy_conv:
                 print(f"Converting currency for {ticker}...")
-                ccy_df = yf.Ticker(self.ccy_conv[ticker]).history(start=start, end=end)['Close']
+                ccy_df = yf.Ticker(self.ccy_conv[ticker]).history(start=start, end=end)["Close"]
                 ccy_df.index = ccy_df.index.tz_localize(None)
                 yf_df[ticker] *= ccy_df
 
@@ -81,7 +81,6 @@ class Portfolio:
         yf_df.ffill(inplace=True)
         print(yf_df.iloc[-1, :])
         return yf_df
-    
 
     def calculate(self) -> None:
         self.price_data = self._get_price_data()
@@ -90,26 +89,26 @@ class Portfolio:
         self.holdings = pd.DataFrame(0.0, index=full_idx, columns=list(self.tickers))
         self.invested_data = pd.DataFrame(0.0, index=full_idx, columns=list(self.tickers))
         self.realized_profit_data = pd.DataFrame(0.0, index=full_idx, columns=list(self.tickers))
-        
+
         # holdings (vectorized)
-        df_buys = pd.DataFrame(self._purchases, columns=['date', 'ticker', 'qty', 'price'])
-        df_sells = pd.DataFrame(self._sales, columns=['date', 'ticker', 'qty', 'price'])
-        
-        df_sells['qty'] = -df_sells['qty']
+        df_buys = pd.DataFrame(self._purchases, columns=["date", "ticker", "qty", "price"])
+        df_sells = pd.DataFrame(self._sales, columns=["date", "ticker", "qty", "price"])
+
+        df_sells["qty"] = -df_sells["qty"]
 
         df_trades = pd.concat([df_buys, df_sells])
-        df_trades['date'] = pd.to_datetime(df_trades['date'])
-        
-        daily_trades = df_trades.groupby(['date', 'ticker'])['qty'].sum().reset_index()
-        qty_ledger = daily_trades.pivot(index='date', columns='ticker', values='qty')
-       
+        df_trades["date"] = pd.to_datetime(df_trades["date"])
+
+        daily_trades = df_trades.groupby(["date", "ticker"])["qty"].sum().reset_index()
+        qty_ledger = daily_trades.pivot(index="date", columns="ticker", values="qty")
+
         self.holdings = qty_ledger.reindex(full_idx).fillna(0).cumsum()
 
-        # dividends (vectorized) 
-        df_divs = pd.DataFrame(self._dividends, columns=['date', 'ticker', 'amount'])
-        df_divs['date'] = pd.to_datetime(df_divs['date'])
-        
-        div_matrix = df_divs.groupby(['date', 'ticker'])['amount'].sum().unstack()
+        # dividends (vectorized)
+        df_divs = pd.DataFrame(self._dividends, columns=["date", "ticker", "amount"])
+        df_divs["date"] = pd.to_datetime(df_divs["date"])
+
+        div_matrix = df_divs.groupby(["date", "ticker"])["amount"].sum().unstack()
         div_matrix = div_matrix.reindex(full_idx).fillna(0)
 
         self.realized_profit_data = (self.holdings * div_matrix).cumsum()
@@ -117,48 +116,48 @@ class Portfolio:
         daily_dividends = (self.holdings * div_matrix).sum(axis=1)
 
         # invested and realized profit (chronogical because path-dependent)
-        tax_lots = {ticker: [] for ticker in self.tickers} 
-        
+        tax_lots = {ticker: [] for ticker in self.tickers}
+
         invested_changes = pd.DataFrame(0.0, index=full_idx, columns=list(self.tickers))
         sales_profit_changes = pd.DataFrame(0.0, index=full_idx, columns=list(self.tickers))
 
-        df_trades = df_trades.sort_values('date')
-        
+        df_trades = df_trades.sort_values("date")
+
         for _, row in df_trades.iterrows():
-            date, ticker, qty, price = row['date'], row['ticker'], row['qty'], row['price']
+            date, ticker, qty, price = row["date"], row["ticker"], row["qty"], row["price"]
 
             if qty > 0:  # buy
                 cost = qty * price
-                tax_lots[ticker].append({'qty': qty, 'price': price, 'cost': cost})
+                tax_lots[ticker].append({"qty": qty, "price": price, "cost": cost})
                 invested_changes.at[date, ticker] += cost
-            
+
             elif qty < 0:  # sell
                 sell_qty = abs(qty)
                 realized_gain = 0.0
                 basis_reduction = 0.0
-                
+
                 # FIFO
                 while sell_qty > 0 and tax_lots[ticker]:
                     oldest_lot = tax_lots[ticker][0]
-                    
-                    if oldest_lot['qty'] <= sell_qty:  # entire lot
-                        realized_gain += oldest_lot['qty'] * (price - oldest_lot['price'])
-                        basis_reduction += oldest_lot['cost']
-                        sell_qty -= oldest_lot['qty']
+
+                    if oldest_lot["qty"] <= sell_qty:  # entire lot
+                        realized_gain += oldest_lot["qty"] * (price - oldest_lot["price"])
+                        basis_reduction += oldest_lot["cost"]
+                        sell_qty -= oldest_lot["qty"]
                         tax_lots[ticker].pop(0)
-                    
+
                     else:  # partial lot
-                        realized_gain += sell_qty * (price - oldest_lot['price'])
-                        proportional_cost = sell_qty * oldest_lot['price']
+                        realized_gain += sell_qty * (price - oldest_lot["price"])
+                        proportional_cost = sell_qty * oldest_lot["price"]
                         basis_reduction += proportional_cost
-                        
-                        oldest_lot['qty'] -= sell_qty
-                        oldest_lot['cost'] -= proportional_cost
+
+                        oldest_lot["qty"] -= sell_qty
+                        oldest_lot["cost"] -= proportional_cost
                         sell_qty = 0
-                
+
                 invested_changes.at[date, ticker] -= basis_reduction
                 sales_profit_changes.at[date, ticker] += realized_gain
-       
+
         # aggregates
         self.invested_data = invested_changes.cumsum()
         self.realized_profit_data += sales_profit_changes.cumsum()
@@ -167,14 +166,14 @@ class Portfolio:
         self.unrealized_profit_data = self.portfolio_data - self.invested_data
 
         # index and drawdown
-        df_trades['cash_flow'] = df_trades['qty'] * df_trades['price']
-        daily_cash_flow = df_trades.groupby('date')['cash_flow'].sum().reindex(full_idx).fillna(0)
+        df_trades["cash_flow"] = df_trades["qty"] * df_trades["price"]
+        daily_cash_flow = df_trades.groupby("date")["cash_flow"].sum().reindex(full_idx).fillna(0)
 
         total_value = self.portfolio_data.sum(axis=1)
         prev_value = total_value.shift(1).fillna(0)
 
         # (V_t + D_t - CF_t - V_t-1) / V_t-1
-        daily_returns = (total_value + daily_dividends - daily_cash_flow - prev_value) / prev_value.replace(0, np.nan)  
+        daily_returns = (total_value + daily_dividends - daily_cash_flow - prev_value) / prev_value.replace(0, np.nan)
         daily_returns = daily_returns.fillna(0)
         self.index_data = (1 + daily_returns).cumprod()
 
@@ -182,12 +181,12 @@ class Portfolio:
         self.drawdown_data = (self.index_data - rolling_max) / rolling_max
 
         # simpler and slower, partial liquidations not supported
-        
+
         # for purchase in self._purchases:
         #     date, ticker, qty, price = self._date_conv(purchase[0]), purchase[1], purchase[2], purchase[3]
         #     self.holdings.loc[self.holdings.index >= date, ticker] += qty
         #     self.invested_data.loc[self.holdings.index >= date, ticker] += qty * price
-        
+
         # for sale in self._sales:
         #     date, ticker, price = self._date_conv(sale[0]), sale[1], sale[2]
         #     tpl = date, ticker
@@ -196,7 +195,7 @@ class Portfolio:
         #     self.holdings.loc[self.holdings.index >= date, ticker] -= qty
         #     self.invested_data.loc[self.holdings.index >= date, ticker] -= invested
         #     self.realized_profit_data.loc[self.holdings.index >= date, ticker] += qty * price - invested
-        
+
         # for dividend in self._dividends:
         #     date, ticker, amount = self._date_conv(dividend[0]), dividend[1], dividend[2]
         #     tpl = date, ticker
@@ -219,7 +218,7 @@ class Portfolio:
                 ax.legend(handles[::-1], labels[::-1], loc="upper left")
             else:
                 ax.legend(loc="upper left")
-            
+
             ax.set_xlabel(None)
             ax.set_ylabel(ylabel)
             ax.minorticks_on()
@@ -236,7 +235,7 @@ class Portfolio:
         ax[0].plot(self.portfolio_data, label=self.portfolio_data.columns)
         _, y1 = ax[0].get_ylim()
         ax[0].set_ylim(0, y1)
-                
+
         ax[1].plot(self.portfolio_data.sum(axis=1), label="value")
         ax[1].plot(self.invested_data.sum(axis=1), label="invested")
         unrealized = self.unrealized_profit_data.sum(axis=1)
@@ -244,7 +243,7 @@ class Portfolio:
         ax[1].plot(unrealized, label="unrealized profit")
         ax[1].plot(realized, label="realized profit")
         ax[1].plot(unrealized + realized, label="total profit")
-             
+
         self._legend_axes_and_titles(
             fig,
             ax,
@@ -255,7 +254,7 @@ class Portfolio:
 
     def _calculate_rolling_cagr(self, years: int) -> pd.Series:
         target_dates = self.index_data.index - DateOffset(years=years)
-        
+
         df = self.index_data.to_frame(name="price_index")
         targets = pd.DataFrame({"Date": target_dates})
 
@@ -265,10 +264,10 @@ class Portfolio:
         end_values = self.index_data.values
         cagr = (end_values / start_values) ** (1.0 / years) - 1.0
         return pd.Series(cagr, index=self.index_data.index)
-    
-    def metrics_plot(self) -> None:        
+
+    def metrics_plot(self) -> None:
         fig, ax = plt.subplots(3, 1, sharex="all")
-        
+
         ax[0].plot(self.index_data - 1, label="portfolio index")
         ax[0].plot(self.drawdown_data, label="drawdown")
 
@@ -292,9 +291,9 @@ class Portfolio:
             ax,
             titles=["Cumulative performance", "Rolling CAGR", "Asset allocation"],
             formatter=mtick.PercentFormatter(xmax=1.0),
-            reverse_legend=[2]
+            reverse_legend=[2],
         )
-    
+
     def show_plots(self) -> None:
         plt.show()
 
@@ -319,7 +318,7 @@ class Portfolio:
             raise ValueError("period must be 'day', 'month', or 'year'")
 
         daily_pct = self.index_data.pct_change().fillna(0.0)
-        total_profit = (self.unrealized_profit_data.sum(axis=1) + self.realized_profit_data.sum(axis=1))
+        total_profit = self.unrealized_profit_data.sum(axis=1) + self.realized_profit_data.sum(axis=1)
         daily_abs = total_profit.diff().fillna(total_profit.iloc[0])
 
         if period == "day":
